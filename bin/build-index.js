@@ -16,6 +16,7 @@ const { Ledger } = require('../lib/ledger');
 const { buildStructure } = require('../lib/structure');
 const { parseQA } = require('../lib/qa');
 const { buildShisetsu, baseName } = require('../lib/shisetsu');
+const { parseTeisei } = require('../lib/teisei');
 const kb = require('../lib/db');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -31,6 +32,7 @@ function docKind(category) {
   const m = category.match(/^(ika|shika|chozai|kihon|tokkei)_(kokuji|tsuchi)$/);
   if (m) return { tbl: TABLE_OF[m[1]], kind: m[2], shisetsu: m[1] === 'kihon' || m[1] === 'tokkei' };
   if (/^gigi/.test(category)) return { tbl: null, kind: 'qa' };
+  if (category === 'teisei_tsuchi') return { tbl: null, kind: 'teisei' };
   return null;
 }
 function log(...a) { console.log(`[${new Date().toISOString()}]`, ...a); }
@@ -61,6 +63,9 @@ function main() {
   const insQa = db.prepare('INSERT INTO qa VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
   const insQaFts = db.prepare('INSERT INTO qa_fts (id, topic, norm) VALUES (?,?,?)');
   const insRef = db.prepare('INSERT INTO refs VALUES (?,?,?)');
+  const insTeisei = db.prepare('INSERT INTO teisei VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const insTeiseiFts = db.prepare('INSERT INTO teisei_fts (id, title, norm) VALUES (?,?,?)');
+  let nTeisei = 0;
 
   let nChunks = 0, nQa = 0, nDocs = 0;
   const shisetsuTitles = []; // { key, title } 施設基準項目の題（QA の話題との紐付け用）
@@ -84,6 +89,15 @@ function main() {
         nQa++;
       }
       log(`${t.fid} ${doc.padEnd(6)} QA ${res.qas.length}`);
+    } else if (t.kind === 'teisei') {
+      const res = parseTeisei(text);
+      for (const r of res.records) {
+        insTeisei.run(r.id, r.fid, r.date, r.besshi, r.target, r.target_ref || '', r.tbl, r.kind, r.code, r.title || '', r.text, kb.norm(r.text), r.p_start, r.p_end);
+        insTeiseiFts.run(r.id, r.title || '', kb.norm(r.text));
+        if (r.code) insRef.run(r.id, 'teisei', r.code);
+        nTeisei++;
+      }
+      log(`${t.fid} 訂正事務連絡 ${res.date} 別添 ${res.targets.length}, records ${res.records.length} (区分 ${res.records.filter(r => r.kind === 'kubun').length}, 施設基準 ${res.records.filter(r => r.kind === 'shisetsu').length})`);
     } else if (t.shisetsu) {
       const st = buildShisetsu(text, t.kind);
       for (const c of st.chunks) {
@@ -124,9 +138,9 @@ function main() {
   }
   db.exec('COMMIT');
   log(`施設基準↔疑義解釈 リンク ${nLink} 件`);
-  db.exec("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize'); INSERT INTO qa_fts(qa_fts) VALUES('optimize');");
+  db.exec("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize'); INSERT INTO qa_fts(qa_fts) VALUES('optimize'); INSERT INTO teisei_fts(teisei_fts) VALUES('optimize');");
   db.close();
-  log(`done: docs ${nDocs}, chunks ${nChunks}, qa ${nQa} → ${dbPath}`);
+  log(`done: docs ${nDocs}, chunks ${nChunks}, qa ${nQa}, teisei ${nTeisei} → ${dbPath}`);
 }
 
 main();

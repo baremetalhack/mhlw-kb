@@ -41,7 +41,7 @@ function parseCode(s) {
 function docLabel(fid) {
   const d = db.prepare('SELECT * FROM docs WHERE fid = ?').get(fid);
   if (!d) return fid;
-  const kind = d.kind === 'kokuji' ? '告示' : d.kind === 'tsuchi' ? '通知' : '疑義解釈';
+  const kind = d.kind === 'kokuji' ? '告示' : d.kind === 'tsuchi' ? '通知' : d.kind === 'teisei' ? '訂正事務連絡' : '疑義解釈';
   return `${kind}${d.note ? ' ' + d.note : ''} [fid ${fid.slice(0, 8)}]`;
 }
 function clip(s, n) { return FULL || s.length <= n ? s : s.slice(0, n) + `…（以下 ${s.length - n} 文字省略、--full で全文）`; }
@@ -56,12 +56,22 @@ function card(code) {
   const qas = tbl === '施'
     ? db.prepare('SELECT DISTINCT q.* FROM refs r JOIN qa q ON q.id = r.owner WHERE r.code = ? OR r.code LIKE ? ORDER BY q.doc, q.no').all(code, `施:%${code.slice(2)}%`)
     : db.prepare('SELECT q.* FROM refs r JOIN qa q ON q.id = r.owner WHERE r.code = ? ORDER BY q.doc, q.no').all(code);
-  if (opts.json) { console.log(JSON.stringify({ code, chunks, qas }, null, 1)); return; }
-  if (!chunks.length && !qas.length) { console.log(`${code}: 該当なし`); return; }
+  const teisei = tbl === '施'
+    ? db.prepare('SELECT * FROM teisei WHERE code = ? OR code LIKE ? ORDER BY date, besshi, p_start').all(code, `施:%${code.slice(2)}%`)
+    : db.prepare('SELECT * FROM teisei WHERE code = ? ORDER BY date, besshi, p_start').all(code);
+  if (opts.json) { console.log(JSON.stringify({ code, chunks, qas, teisei }, null, 1)); return; }
+  if (!chunks.length && !qas.length && !teisei.length) { console.log(`${code}: 該当なし`); return; }
   for (const c of chunks) {
     hr(`${c.kind === 'shisetsu' ? `${c.tbl}診療料 施設基準` : (c.code || '通則')} ${c.title}  ― ${docLabel(c.fid)} p${c.p_start}${c.p_end !== c.p_start ? '-' + c.p_end : ''}`);
     console.log(JSON.parse(c.path).join(' > '));
     console.log(clip(c.text, 1500));
+  }
+  if (teisei.length) {
+    hr(`訂正履歴 ${teisei.length} 件（訂正事務連絡に載った訂正後の該当箇所）`);
+    for (const r of teisei) {
+      console.log(`\n[${r.date}] 別添${r.besshi} ${r.target.slice(0, 40)}  (${docLabel(r.fid)} p${r.p_start})`);
+      console.log(clip(r.text, 500));
+    }
   }
   if (qas.length) {
     hr(`関連する疑義解釈 ${qas.length} 件`);
@@ -91,6 +101,8 @@ function search(terms) {
     const qrows = db.prepare(`SELECT q.*, bm25(qa_fts) AS rank
       FROM qa_fts JOIN qa q ON q.id = qa_fts.id WHERE qa_fts MATCH ?${opts.table ? ` AND q.tbl = '${opts.table}'` : ''} ORDER BY rank LIMIT ?`).all(match, limit * 3);
     for (const r of qrows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'qa', ...r, snip: kb.snippetOf(r.q + ' ／ ' + r.a, normTerms) });
+    const trows = db.prepare(`SELECT t.*, bm25(teisei_fts) AS rank FROM teisei_fts JOIN teisei t ON t.id = teisei_fts.id WHERE teisei_fts MATCH ? ORDER BY rank LIMIT ?`).all(match, limit * 2);
+    for (const r of trows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'teisei', ...r, snip: kb.snippetOf(r.text, normTerms) });
   } else {
     // 全部短い語: LIKE のみ
     const like = normTerms.map(() => 'norm LIKE ?').join(' AND ');
@@ -105,6 +117,9 @@ function search(terms) {
     if (r.type === 'chunk') {
       console.log(`\n■ ${r.kind === 'shisetsu' ? `[${r.tbl} 施設基準]` : (r.code || '通則')} ${r.title}  ― ${docLabel(r.fid)} p${r.p_start}`);
       console.log(`  ${JSON.parse(r.path).join(' > ')}`);
+      console.log(`  ${r.snip}`);
+    } else if (r.type === 'teisei') {
+      console.log(`\n■ 訂正 [${r.date}] ${r.code || r.target.slice(0, 30)} ${r.title || ''}  ― 訂正事務連絡 別添${r.besshi} [fid ${r.fid.slice(0, 8)}] p${r.p_start}`);
       console.log(`  ${r.snip}`);
     } else {
       console.log(`\n■ [${r.doc} ${r.no}]${r.topic ? ' 【' + r.topic + '】' : ''}  ― ${docLabel(r.fid)} p${r.p_start}`);
