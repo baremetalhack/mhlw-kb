@@ -79,17 +79,17 @@ function search(terms) {
   const tblFilter = opts.table ? ` AND c.tbl = '${opts.table}'` : '';
   const results = [];
   if (match) {
-    const rows = db.prepare(`SELECT c.*, bm25(chunks_fts) AS rank, snippet(chunks_fts, 2, '[', ']', '…', 30) AS snip
+    const rows = db.prepare(`SELECT c.*, bm25(chunks_fts) AS rank
       FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.id WHERE chunks_fts MATCH ?${tblFilter} ORDER BY rank LIMIT ?`).all(match, limit * 3);
-    for (const r of rows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'chunk', ...r });
-    const qrows = db.prepare(`SELECT q.*, bm25(qa_fts) AS rank, snippet(qa_fts, 2, '[', ']', '…', 30) AS snip
+    for (const r of rows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'chunk', ...r, snip: kb.snippetOf(r.text, normTerms) });
+    const qrows = db.prepare(`SELECT q.*, bm25(qa_fts) AS rank
       FROM qa_fts JOIN qa q ON q.id = qa_fts.id WHERE qa_fts MATCH ?${opts.table ? ` AND q.tbl = '${opts.table}'` : ''} ORDER BY rank LIMIT ?`).all(match, limit * 3);
-    for (const r of qrows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'qa', ...r });
+    for (const r of qrows) if (short.every(s => r.norm.includes(s))) results.push({ type: 'qa', ...r, snip: kb.snippetOf(r.q + ' ／ ' + r.a, normTerms) });
   } else {
     // 全部短い語: LIKE のみ
     const like = normTerms.map(() => 'norm LIKE ?').join(' AND ');
-    for (const r of db.prepare(`SELECT * FROM chunks c WHERE ${like}${tblFilter} LIMIT ?`).all(...normTerms.map(t => `%${t}%`), limit)) results.push({ type: 'chunk', ...r, rank: 0, snip: '' });
-    for (const r of db.prepare(`SELECT * FROM qa q WHERE ${like} LIMIT ?`).all(...normTerms.map(t => `%${t}%`), limit)) results.push({ type: 'qa', ...r, rank: 0, snip: '' });
+    for (const r of db.prepare(`SELECT * FROM chunks c WHERE ${like}${tblFilter} LIMIT ?`).all(...normTerms.map(t => `%${t}%`), limit)) results.push({ type: 'chunk', ...r, rank: 0, snip: kb.snippetOf(r.text, normTerms) });
+    for (const r of db.prepare(`SELECT * FROM qa q WHERE ${like} LIMIT ?`).all(...normTerms.map(t => `%${t}%`), limit)) results.push({ type: 'qa', ...r, rank: 0, snip: kb.snippetOf(r.q + ' ／ ' + r.a, normTerms) });
   }
   results.sort((a, b) => a.rank - b.rank);
   const top = results.slice(0, limit);
@@ -99,9 +99,10 @@ function search(terms) {
     if (r.type === 'chunk') {
       console.log(`\n■ ${r.code || '通則'} ${r.title}  ― ${docLabel(r.fid)} p${r.p_start}`);
       console.log(`  ${JSON.parse(r.path).join(' > ')}`);
-      console.log(`  …${r.snip}…`);
+      console.log(`  ${r.snip}`);
     } else {
       console.log(`\n■ [${r.doc} ${r.no}]${r.topic ? ' 【' + r.topic + '】' : ''}  ― ${docLabel(r.fid)} p${r.p_start}`);
+      console.log(`  ${r.snip}`);
       console.log(`  問: ${r.q.slice(0, 120)}`);
       console.log(`  答: ${r.a.slice(0, 160)}`);
     }
