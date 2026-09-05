@@ -1,0 +1,9 @@
+node_modules/
+.env
+# PDF/Excel 本体は git に入れない（サーバーディスク + バックアップで保持）
+data/files/
+# 台帳・スナップショット・現在状態は git で履歴管理する
+!data/ledger/
+!data/snapshots/
+!data/state/
+.DS_Store

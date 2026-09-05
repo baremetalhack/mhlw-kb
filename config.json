@@ -1,0 +1,33 @@
+{
+  "pages": [
+    {
+      "id": "r8",
+      "url": "https://www.mhlw.go.jp/stf/newpage_67729.html",
+      "title": "令和８年度診療報酬改定について",
+      "contentSelector": "main"
+    }
+  ],
+  "userAgent": "mhlw-kb/0.1 (+https://github.com/; contact: see MAIL_FROM)",
+  "download": { "concurrency": 3, "delayMs": 400, "retries": 3, "timeoutMs": 120000 },
+  "dataDir": "data",
+  "rules": [
+    { "id": "ika_kokuji",    "watch": true,  "desc": "医科点数表（告示）",   "aname": "^医科点数表", "label": "告示第69号" },
+    { "id": "shika_kokuji",  "watch": true,  "desc": "歯科点数表（告示）",   "aname": "^歯科点数表", "label": "告示第69号" },
+    { "id": "chozai_kokuji", "watch": true,  "desc": "調剤点数表（告示）",   "aname": "^調剤点数表", "label": "告示第69号" },
+    { "id": "ika_tsuchi",    "watch": true,  "desc": "医科点数表（通知）",   "aname": "^医科点数表", "label": "留意事項について" },
+    { "id": "shika_tsuchi",  "watch": true,  "desc": "歯科点数表（通知）",   "aname": "^歯科点数表", "label": "留意事項について" },
+    { "id": "chozai_tsuchi", "watch": true,  "desc": "調剤点数表（通知）",   "aname": "^調剤点数表", "label": "留意事項について" },
+    { "id": "seiteibun",     "watch": false, "desc": "制定文",               "aname": "^制定文", "h3": "算定方法" },
+    { "id": "yoshiki_tsuchi","watch": false, "desc": "様式（医科/歯科/調剤）", "aname": "^様式（(医科|歯科|調剤)）", "h3": "算定方法" },
+    { "id": "kihon_kokuji",  "watch": true,  "desc": "基本診療料 施設基準（告示）", "aname": "^基本診療料の施設基準等の一部を改正する件" },
+    { "id": "kihon_tsuchi",  "watch": true,  "desc": "基本診療料 施設基準（通知）", "aname": "^基本診療料の施設基準等及びその届出に関する手続きの取扱いについて" },
+    { "id": "tokkei_kokuji", "watch": true,  "desc": "特掲診療料 施設基準（告示）", "aname": "^特掲診療料の施設基準等の一部を改正する件" },
+    { "id": "tokkei_tsuchi", "watch": true,  "desc": "特掲診療料 施設基準（通知）", "aname": "^特掲診療料の施設基準等及びその届出に関する手続きの取扱いについて" },
+    { "id": "gigi",          "watch": true,  "desc": "疑義解釈資料（その○）", "aname": "^疑義解釈資料の送付について（その\\s*[0-9０-９]+）" },
+    { "id": "gigi_teisei",   "watch": true,  "desc": "疑義解釈資料の一部訂正", "aname": "^「疑義解釈資料の送付について（その\\s*[0-9０-９]+）」の一部訂正" },
+    { "id": "gigi_other",    "watch": true,  "desc": "その他の疑義解釈資料", "aname": "疑義解釈資料の送付について" },
+    { "id": "teisei_tsuchi", "watch": true,  "desc": "改定関連通知及び官報掲載事項の一部訂正（事務連絡）", "aname": "改定関連通知及び官報掲載事項の一部訂正について" },
+    { "id": "shisetsu_besshi","watch": false, "desc": "施設基準 別紙・様式（Excel）", "h3": "算定方法", "ext": "xlsx" },
+    { "id": "checklist",     "watch": false, "desc": "施設基準届出チェックリスト", "aname": "施設基準届出チェックリスト" }
+  ]
+}

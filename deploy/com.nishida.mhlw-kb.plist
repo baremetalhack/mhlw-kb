@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Mac での暫定運用用 launchd 設定（~/Library/LaunchAgents/ に置く）。
+     本番は Linode 上の systemd timer を使う。スリープ中は実行されない点に注意。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.nishida.mhlw-kb</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>cd "$HOME/path/to/mhlw-kb" &amp;&amp; /usr/local/bin/node bin/crawl.js &amp;&amp; deploy/git-commit.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/tmp/mhlw-kb.log</string>
+  <key>StandardErrorPath</key><string>/tmp/mhlw-kb.err</string>
+</dict>
+</plist>

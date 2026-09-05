@@ -1,0 +1,17 @@
+# /etc/systemd/system/mhlw-kb.service
+# 1回のクロールを実行するワンショットサービス。定時実行は mhlw-kb.timer が担う。
+[Unit]
+Description=mhlw-kb crawler (厚労省 診療報酬改定ページ 監視)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mhlwkb
+WorkingDirectory=/opt/mhlw-kb
+EnvironmentFile=/opt/mhlw-kb/.env
+ExecStart=/usr/bin/node /opt/mhlw-kb/bin/crawl.js
+# 成功後に台帳・スナップショットを git に記録（PDF本体は .gitignore で除外）
+ExecStartPost=/opt/mhlw-kb/deploy/git-commit.sh
+Nice=10
+TimeoutStartSec=1800

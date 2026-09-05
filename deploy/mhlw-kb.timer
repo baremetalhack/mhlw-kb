@@ -1,0 +1,14 @@
+# /etc/systemd/system/mhlw-kb.timer
+# 毎日 9:00 / 21:00 JST に実行。サーバーのタイムゾーンが UTC の場合も JST で指定できるよう Asia/Tokyo を明記。
+[Unit]
+Description=Run mhlw-kb crawler at 09:00 and 21:00 JST
+
+[Timer]
+OnCalendar=*-*-* 09,21:00:00 Asia/Tokyo
+# 停止中に予定時刻を過ぎていたら起動直後に実行（取りこぼし防止）
+Persistent=true
+RandomizedDelaySec=120
+Unit=mhlw-kb.service
+
+[Install]
+WantedBy=timers.target
