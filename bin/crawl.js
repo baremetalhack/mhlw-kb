@@ -71,8 +71,8 @@ async function crawlPage(page, ledger) {
   // 1. ページ取得・解析
   const res = await http.get(page.url, { userAgent: UA, timeoutMs: 60000, retries: config.download.retries });
   const html = res.buf.toString('utf8');
-  const { links: rawLinks, contentHtml, headings } = parsePage(html, { baseUrl: page.url, contentSelector: page.contentSelector });
-  const pageHash = http.sha256(Buffer.from(contentHtml.replace(/\s+/g, ' '), 'utf8'));
+  const { links: rawLinks, headings, canonical } = parsePage(html, { baseUrl: page.url, contentSelector: page.contentSelector });
+  const pageHash = http.sha256(Buffer.from(canonical, 'utf8'));
   const links = rawLinks.map(l => ({ ...l, ...classify(l, rules) }));
   log(`links: ${links.length} (watch: ${links.filter(l => l.watch).length}), page_hash ${pageHash.slice(0, 16)}`);
 

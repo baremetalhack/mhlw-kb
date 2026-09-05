@@ -7,3 +7,5 @@ data/files/
 !data/snapshots/
 !data/state/
 .DS_Store
+data/text/
+data/struct/

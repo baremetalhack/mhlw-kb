@@ -122,3 +122,11 @@ test('Apache ETag: ミラー間の mtime ずれ（<5s）は同一、サイズ違
   assert.equal(Ledger.etagEquivalent('"473b7-6533f1f29a928"', '"473b7-6540f1f29a928"'), false);  // 別日
   assert.equal(Ledger.etagEquivalent('"abc"', '"473b7-6533f1f29a928"'), false);
 });
+
+test('ページ正規化ハッシュ: コメント・処理命令・実体参照の違いは無視、本文の変化は検出', () => {
+  const a = parsePage(html, { baseUrl: BASE }).canonical;
+  const b = parsePage(html.replace('&nbsp;', '&#160;').replace('<main class="l-content" id="content">', '<main class="l-content" id="content"><?ra g="!MB"?><!-- x -->'), { baseUrl: BASE }).canonical;
+  assert.equal(a, b);
+  const c = parsePage(html.replace('（0730訂正後）', '（0915訂正後）'), { baseUrl: BASE }).canonical;
+  assert.notEqual(a, c);
+});
