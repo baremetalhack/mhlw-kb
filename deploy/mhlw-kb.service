@@ -13,5 +13,7 @@ EnvironmentFile=/opt/mhlw-kb/.env
 ExecStart=/usr/bin/node /opt/mhlw-kb/bin/crawl.js
 # 成功後に台帳・スナップショットを git に記録（PDF本体は .gitignore で除外）
 ExecStartPost=/opt/mhlw-kb/deploy/git-commit.sh
+# 新しい PDF があれば 抽出 → 索引再構築 → お尋ねサーバー再起動（変更がなければ何もしない）
+ExecStartPost=/opt/mhlw-kb/deploy/reindex.sh
 Nice=10
 TimeoutStartSec=1800

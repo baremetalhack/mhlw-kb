@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>告示通知 お尋ね</title>
+<style>
+  :root { --fg:#1d1d1f; --muted:#6e6e73; --line:#e5e5ea; --acc:#1d4ed8; --bg:#fafafa; --card:#fff; --tag:#eef2ff; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#e5e5ea; --muted:#9a9aa0; --line:#3a3a3f; --acc:#8ab4f8; --bg:#111114; --card:#1b1b1f; --tag:#26304a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; font-size:15px; line-height:1.6; }
+  header { position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--line); padding:12px 16px; z-index:2; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  form { display:flex; gap:8px; }
+  input[type=search] { flex:1; font-size:17px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  button { font-size:15px; padding:10px 16px; border:0; border-radius:8px; background:var(--acc); color:#fff; cursor:pointer; }
+  .hint { color:var(--muted); font-size:13px; margin-top:6px; }
+  main { padding: 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin: 12px 0; }
+  .card h2 { font-size:16px; margin:0 0 4px; }
+  .src { color:var(--muted); font-size:13px; }
+  .path { color:var(--muted); font-size:13px; margin-bottom:8px; }
+  pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; margin:8px 0 0; font-size:14px; }
+  .tag { display:inline-block; background:var(--tag); border-radius:6px; padding:1px 8px; font-size:12px; margin-right:6px; }
+  .code { color:var(--acc); cursor:pointer; text-decoration:underline dotted; }
+  h3.sec { font-size:14px; color:var(--muted); margin:20px 0 4px; border-bottom:1px solid var(--line); }
+  .qa .q { margin-top:6px; } .qa .a { color:var(--fg); }
+  .snip b { background:#fff3bf; color:#000; padding:0 2px; border-radius:2px; }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  .empty { color:var(--muted); }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <form id="f"><input id="q" type="search" placeholder="区分番号（A000, B001-10, 歯:M017, 調:10-2）、施設基準の名称、または検索語（空白区切り）" autofocus><button>お尋ね</button></form>
+  <div class="hint">例: <span class="code" data-q="B001-10">B001-10</span> ・ <span class="code" data-q="施:機能強化加算">施:機能強化加算</span> ・ <span class="code" data-q="在宅自己注射 導入初期">在宅自己注射 導入初期</span> ・ <span class="code" data-q="充実管理加算">充実管理加算</span></div>
+</div></header>
+<main><div class="wrap" id="out"><p class="empty">区分番号か検索語を入れてください。結果には必ず出典（文書・ページ・訂正版）が付きます。</p></div></main>
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const out = $('#out'), input = $('#q');
+  let token = localStorage.getItem('mhlw_token') || '';
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const codeLinks = s => esc(s).replace(/([ＡＢＣＤＥＦＧＨＩＪＫＬＭＮ][０-９]{3}(?:(?:[－‐―-]|の)[０-９0-9]+)*)/g, m => `<span class="code" data-q="${m}">${m}</span>`);
+  const snip = s => esc(s).replace(/\[([^\]]+)\]/g, '<b>$1</b>');
+
+  async function api(path) {
+    const r = await fetch(path, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (r.status === 401) {
+      token = prompt('アクセストークンを入力してください') || '';
+      localStorage.setItem('mhlw_token', token);
+      if (!token) throw new Error('unauthorized');
+      return api(path);
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    return j;
+  }
+
+  function renderChunk(c) {
+    const head = c.kind === 'shisetsu' ? `${esc(c.tbl)}診療料 施設基準　${esc(c.title)}` : `${esc(c.code || '通則')}　${esc(c.title)}`;
+    return `<div class="card"><h2>${head}</h2><div class="src">${esc(c.doc)}　p${c.p_start}${c.p_end !== c.p_start ? '-' + c.p_end : ''}</div><div class="path">${esc((c.path || []).join(' > '))}</div><pre>${codeLinks(c.text)}</pre></div>`;
+  }
+  function renderCard(card) {
+    let h = '';
+    for (const c of card.chunks) h += renderChunk(c);
+    if (card.teisei.length) {
+      h += `<h3 class="sec">訂正履歴 ${card.teisei.length} 件（訂正事務連絡に載った訂正後の該当箇所。見え消し部分は訂正前後の文字が連なって見えます）</h3>`;
+      for (const t of card.teisei) h += `<div class="card"><h2>${esc(t.date)}　別添${t.besshi}　${esc(t.target)}</h2><div class="src">${esc(t.docLabel)}　p${t.p_start}</div><pre>${codeLinks(t.text)}</pre></div>`;
+    }
+    if (card.qas.length) {
+      h += `<h3 class="sec">関連する疑義解釈 ${card.qas.length} 件</h3>`;
+      for (const x of card.qas) h += `<div class="card qa"><h2>${esc(x.doc)} ${esc(x.no)}${x.topic ? '　【' + esc(x.topic) + '】' : ''}</h2><div class="src">${esc(x.docLabel)}　p${x.p_start}</div><div class="q"><b>問</b>　${codeLinks(x.q)}</div><div class="a"><b>答</b>　${codeLinks(x.a)}</div></div>`;
+    }
+    return h || `<p class="empty">${esc(card.code)}: 該当なし</p>`;
+  }
+  function renderSearch(s) {
+    let h = `<h3 class="sec">検索「${esc(s.terms.join(' '))}」 ${s.total} 件（上位 ${s.results.length} 件）</h3>`;
+    if (!s.results.length) h += '<p class="empty">見つかりませんでした。語を短くする、別の言い回しにする、区分番号で引く、などをお試しください。</p>';
+    for (const r of s.results) {
+      if (r.type === 'chunk') h += `<div class="card"><h2>${r.kind === 'shisetsu' ? '<span class="tag">' + esc(r.tbl) + ' 施設基準</span>' : '<span class="tag">' + esc(r.tbl) + '</span><span class="code" data-q="' + esc(r.code || '') + '">' + esc(r.code || '通則') + '</span> '}${esc(r.title)}</h2><div class="src">${esc(r.docLabel)}　p${r.p_start}　${esc((r.path || []).join(' > '))}</div><div class="snip">${snip(r.snip)}</div></div>`;
+      else if (r.type === 'teisei') h += `<div class="card"><h2><span class="tag">訂正 ${esc(r.date)}</span>${r.code ? '<span class="code" data-q="' + esc(r.code) + '">' + esc(r.code) + '</span> ' : ''}${esc(r.title || r.target)}</h2><div class="src">訂正事務連絡 別添${r.besshi}　p${r.p_start}</div><div class="snip">${snip(r.snip)}</div></div>`;
+      else h += `<div class="card qa"><h2><span class="tag">疑義解釈</span>${esc(r.doc)} ${esc(r.no)}${r.topic ? '　【' + esc(r.topic) + '】' : ''}</h2><div class="src">${esc(r.docLabel)}　p${r.p_start}</div><div class="snip">${snip(r.snip)}</div><details><summary>問と答を表示</summary><div class="q"><b>問</b>　${codeLinks(r.q)}</div><div class="a"><b>答</b>　${codeLinks(r.a)}</div></details></div>`;
+    }
+    return h;
+  }
+
+  async function run(text) {
+    text = (text || '').trim();
+    if (!text) return;
+    input.value = text;
+    history.replaceState(null, '', '?q=' + encodeURIComponent(text));
+    out.innerHTML = '<p class="empty">検索中…</p>';
+    try {
+      const j = await api('/api/search?q=' + encodeURIComponent(text));
+      let h = '';
+      if (j.card) h += renderCard(j.card);
+      if (j.search) h += renderSearch(j.search);
+      out.innerHTML = h;
+      window.scrollTo(0, 0);
+    } catch (e) { out.innerHTML = `<p class="empty">エラー: ${esc(e.message)}</p>`; }
+  }
+  $('#f').addEventListener('submit', e => { e.preventDefault(); run(input.value); });
+  document.addEventListener('click', e => { const t = e.target.closest('.code'); if (t) run(t.dataset.q); });
+  const initial = new URLSearchParams(location.search).get('q');
+  if (initial) run(initial);
+})();
+</script>
+</body>
+</html>

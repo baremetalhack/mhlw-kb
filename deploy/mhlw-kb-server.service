@@ -1,0 +1,19 @@
+# /etc/systemd/system/mhlw-kb-server.service
+# お尋ねサーバー（常駐）。索引を作り直したら `systemctl restart mhlw-kb-server`。
+[Unit]
+Description=mhlw-kb ask server (告示通知 お尋ね)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mhlwkb
+WorkingDirectory=/opt/mhlw-kb
+EnvironmentFile=/opt/mhlw-kb/.env
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+ExecStart=/usr/bin/node /opt/mhlw-kb/bin/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

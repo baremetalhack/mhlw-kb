@@ -52,6 +52,7 @@ systemctl list-timers mhlw-kb.timer ; journalctl -u mhlw-kb.service -n 50
 
 - 9:00 / 21:00 JST に実行（`Persistent=true` で停止中の取りこぼしも起動後に補完）。
 - 成功後 `deploy/git-commit.sh` が台帳・スナップショット・state を自動コミット（`GIT_PUSH=1` で push）。
+  続けて `deploy/reindex.sh` を呼べば、新しい PDF があったときだけ索引を更新してサーバーを再起動する。
   PDF 本体（`data/files/`）は git 対象外。サーバーのバックアップで保持する。
 - Linode は既定で送信 25 番ポートを塞いでいるため、メールは SMTP 587（Gmail アプリパスワード）を使う。
 
@@ -65,7 +66,10 @@ bin/structure.js    点数表の構造化（検証）  lib/diff.js       差分�
 bin/qa.js           疑義解釈の問／答       lib/fetch.js      HTTP（UA・リトライ・HEAD）
 bin/build-index.js  SQLite 索引構築        lib/mail.js       Gmail 通知
 bin/ask.js          お尋ね CLI             lib/structure.js  章/部/節/款・区分番号チャンク
+bin/server.js       お尋ね HTTP サーバー    lib/query.js      問い合わせロジック（CLI/HTTP 共用）
+web/index.html      ブラウザ画面
                                           lib/shisetsu.js   施設基準（告示=縦書き/通知）の項目チャンク
+                                          lib/teisei.js     訂正事務連絡 → 訂正レコード
 config.json         対象ページ・分類規則    lib/qa.js         疑義解釈パーサ
 deploy/             systemd / launchd     lib/db.js         SQLite スキーマ・正規化
 data/               台帳・スナップショット・files（PDF）・text・qa・kb.sqlite
@@ -84,6 +88,24 @@ node bin/ask.js 施:機能強化加算        # 施設基準カード: 告示（
 node bin/ask.js 在宅自己注射 導入初期  # 全文検索（全語 AND、3文字以上は trigram、短い語は後段フィルタ）
 ```
 
+### お尋ねサーバー（HTTP）
+
+```sh
+node bin/server.js                 # http://127.0.0.1:8080/ （ブラウザ画面 + API、外部依存なし）
+node bin/server.js --host=0.0.0.0 --port=8080
+```
+
+- `/api/card?code=B001-10`、`/api/search?q=...&table=医&limit=10`、`/api/docs`、`/api/health`（すべて GET・JSON）
+- `.env` に `AUTH_TOKEN=...` を書くと API と画面にトークンが必要になる（画面は初回に入力を求め、ブラウザに保存）
+- 索引は起動時に開くので、`bin/build-index.js` で作り直したら再起動する（Linode では `deploy/reindex.sh` が
+  クロール後に新しい fid があるときだけ 抽出→索引→再起動 を行う）
+- Linode: `deploy/mhlw-kb-server.service` を有効化し、nginx/Caddy で TLS 終端して 127.0.0.1:8080 に中継する
+
+カードには「訂正履歴」が付く: 訂正事務連絡（令和８年度診療報酬改定関連通知及び官報掲載事項の一部訂正について）を
+別添ごとに対象通知へ割り当て、区分番号／施設基準項目単位の訂正レコード（`lib/teisei.js`）にしてある。
+注意: 事務連絡は見え消し（取消線）で「第７８号」のように訂正前後の文字が並ぶことがある。取消線は図形なので
+テキスト抽出では区別できず、そのまま連なって見える。
+
 - 施設基準の告示（基本診療料・特掲診療料）は官報形式の **縦書き** PDF。MuPDF は1文字ずつ返すので、
   `bin/extract.js` が同じ x の文字を列にまとめ、右→左・上→下の順に再構成する（列の先頭 y を字下げ量として x に入れる）。
   `lib/shisetsu.js` が「第三 …」「一の二 …」（漢数字、番号と題の間に空白なし）を項目に分ける。
@@ -98,6 +120,6 @@ node bin/ask.js 在宅自己注射 導入初期  # 全文検索（全語 AND、3
 ## 今後
 
 1. 通知内の「注」「(1)」「ア」階層の復元（x 座標）、施設基準の告示↔通知の項目対応の精度向上
-2. 訂正事務連絡（新旧対照表）を区分番号単位で紐付け、「いつ何が直ったか」の履歴を出す
-3. 埋め込みによる意味検索の併用、HTTP API / チャット UI（お尋ねサーバー）
+2. 訂正事務連絡の見え消し（取消線）を図形から検出して訂正前／後を分離する
+3. 埋め込みによる意味検索の併用、LLM による回答生成（出典必須）
 4. 令和10年度改定以降は `config.json` の `pages` にページを追加するだけで同じ台帳・索引に蓄積される
