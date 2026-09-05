@@ -58,17 +58,39 @@ systemctl list-timers mhlw-kb.timer ; journalctl -u mhlw-kb.service -n 50
 ## ディレクトリ
 
 ```
-bin/crawl.js      クローラ本体        lib/parse.js     HTML → リンクレコード
-bin/report.js     台帳閲覧            lib/classify.js  カテゴリ付与
-config.json       対象ページ・分類規則  lib/ledger.js    JSONL 台帳
-deploy/           systemd / launchd   lib/diff.js      差分検知
-test/             node --test         lib/fetch.js     HTTP（UA・リトライ・HEAD）
-data/             台帳・スナップショット・ファイル本体   lib/mail.js  Gmail 通知
+bin/crawl.js        クローラ本体          lib/parse.js      HTML → リンクレコード
+bin/report.js       台帳閲覧              lib/classify.js   カテゴリ付与
+bin/extract.js      PDF → 座標付きテキスト  lib/ledger.js     JSONL 台帳
+bin/structure.js    点数表の構造化（検証）  lib/diff.js       差分検知
+bin/qa.js           疑義解釈の問／答       lib/fetch.js      HTTP（UA・リトライ・HEAD）
+bin/build-index.js  SQLite 索引構築        lib/mail.js       Gmail 通知
+bin/ask.js          お尋ね CLI             lib/structure.js  章/部/節/款・区分番号チャンク
+config.json         対象ページ・分類規則    lib/qa.js         疑義解釈パーサ
+deploy/             systemd / launchd     lib/db.js         SQLite スキーマ・正規化
+data/               台帳・スナップショット・files（PDF）・text・qa・kb.sqlite
 ```
 
-## 今後（お尋ねサーバー）
+## 第2段階: 抽出・構造化・索引（お尋ね機能）
 
-1. PDF → テキスト抽出（区分番号・施設基準項番単位のチャンク化、告示/通知/疑義解釈の紐付け）
-2. SQLite FTS5（日本語トークナイズ）+ 埋め込みのハイブリッド検索
-3. 回答には必ず fid・ページ・版（訂正ラベル）を引用
-4. 令和10年度改定以降は `config.json` の `pages` にページを追加するだけで同じ台帳に蓄積される
+```sh
+node bin/extract.js --watch        # PDF → data/text/<fid>.json（MuPDF.js、座標付き行。fid 単位でキャッシュ）
+node bin/structure.js --fid=<fid>  # 点数表の章/部/節/款 + 区分番号チャンク（検証表示）  --compare=<a>,<b> で区分集合の比較
+node bin/qa.js                     # 疑義解釈 → data/qa/<fid>.json（問／答、区分番号参照）
+node bin/build-index.js            # data/kb.sqlite（SQLite FTS5 trigram、node:sqlite 組み込み・ネイティブ依存なし）
+node bin/ask.js B001-10            # 区分番号カード: 告示本文 + 通知（留意事項）+ 関連する疑義解釈（出典付き）
+node bin/ask.js 歯:M017            # 名前空間: 医 / 歯 / 調 / 訪（省略時 医）
+node bin/ask.js 在宅自己注射 導入初期  # 全文検索（全語 AND、3文字以上は trigram、短い語は後段フィルタ）
+```
+
+- `bin/extract.js` だけが MuPDF（AGPL）に触れる。後段は JSON/SQLite しか読まないので、公開サーバーは MuPDF を含まない構成にできる。
+- 区分番号は点数表ごとの名前空間付きで扱う（`医:A000` と `歯:A000` は別物、調剤は `調:10-2`、訪問看護は `訪:06`）。
+- 実データで確認済みの癖: 枝番10以上は半角（Ｂ００５－10）、歯科は U+2015 のダッシュ混在、
+  「ＡからＢまで 削除」「Ａ及びＢ」「Ｋ００３、Ｋ００４」の列挙見出し、調剤通知の「区分００」前置、
+  疑義解釈の別添ごとの問番号リセット・ページラベル（医－1 / 看ベ－3 / DPC－12）。
+
+## 今後
+
+1. 通知内の「注」「(1)」「ア」階層の復元（x 座標）、施設基準通知（基本診療料・特掲診療料）の項番チャンク化
+2. 訂正事務連絡（新旧対照表）を区分番号単位で紐付け、「いつ何が直ったか」の履歴を出す
+3. 埋め込みによる意味検索の併用、HTTP API / チャット UI（お尋ねサーバー）
+4. 令和10年度改定以降は `config.json` の `pages` にページを追加するだけで同じ台帳・索引に蓄積される

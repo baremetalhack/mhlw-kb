@@ -72,3 +72,14 @@ test('区分番号の正規化', () => {
   assert.equal(parseCodeList('Ａ２１６及びＡ２１７').codes.join(','), 'A216,A217');
   assert.equal(CODE_HEAD_RE.test('Ｍ０２０に掲げる鋳造鉤'), false);
 });
+
+test('調剤の通知: 「区分００」前置と「＜調剤技術料＞」見出し', () => {
+  const doc = { fid: 't4', pages: 1, lines: [
+    L(1, 56, '＜通則＞'), L(1, 90, '12 区分番号は、例えば「区分００」調剤基本料における…'),
+    L(1, 80, '＜調剤技術料＞'), L(1, 90, '区分００ 調剤基本料'), L(1, 101, '１ 受付回数等'),
+    L(1, 90, '区分１０－２ 調剤管理料'),
+  ] };
+  const st = buildStructure(doc);
+  assert.deepEqual(st.chunks.map(c => c.code), [null, '00', '10-2']);
+  assert.deepEqual(st.chunks[2].path, ['調剤技術料']);
+});

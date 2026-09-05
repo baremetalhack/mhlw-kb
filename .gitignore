@@ -9,3 +9,5 @@ data/files/
 .DS_Store
 data/text/
 data/struct/
+data/qa/
+data/kb.sqlite*
