@@ -15,6 +15,7 @@ const path = require('path');
 const { Ledger } = require('../lib/ledger');
 const { buildStructure } = require('../lib/structure');
 const { parseQA } = require('../lib/qa');
+const { buildShisetsu, baseName } = require('../lib/shisetsu');
 const kb = require('../lib/db');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -25,10 +26,10 @@ const dataDirRaw = val('data', config.dataDir || 'data');
 const dataDir = path.isAbsolute(dataDirRaw) ? dataDirRaw : path.join(ROOT, dataDirRaw);
 const dbPath = path.resolve(val('db', path.join(dataDir, 'kb.sqlite')));
 
-const TABLE_OF = { ika: '医', shika: '歯', chozai: '調' };
+const TABLE_OF = { ika: '医', shika: '歯', chozai: '調', kihon: '基本', tokkei: '特掲' };
 function docKind(category) {
-  const m = category.match(/^(ika|shika|chozai)_(kokuji|tsuchi)$/);
-  if (m) return { tbl: TABLE_OF[m[1]], kind: m[2] };
+  const m = category.match(/^(ika|shika|chozai|kihon|tokkei)_(kokuji|tsuchi)$/);
+  if (m) return { tbl: TABLE_OF[m[1]], kind: m[2], shisetsu: m[1] === 'kihon' || m[1] === 'tokkei' };
   if (/^gigi/.test(category)) return { tbl: null, kind: 'qa' };
   return null;
 }
@@ -62,6 +63,8 @@ function main() {
   const insRef = db.prepare('INSERT INTO refs VALUES (?,?,?)');
 
   let nChunks = 0, nQa = 0, nDocs = 0;
+  const shisetsuTitles = []; // { key, title } 施設基準項目の題（QA の話題との紐付け用）
+  const qaList = [];
   db.exec('BEGIN');
   for (const t of targets) {
     const tp = path.join(dataDir, 'text', `${t.fid}.json`);
@@ -77,9 +80,22 @@ function main() {
         insQa.run(q.id, q.fid, q.doc, q.section, q.table, q.topic, q.no, q.q, q.a, JSON.stringify(q.codes), q.p_start, q.p_end, kb.norm(`${q.topic || ''} ${q.q} ${q.a}`));
         insQaFts.run(q.id, q.topic || '', kb.norm(`${q.topic || ''} ${q.q} ${q.a}`));
         for (const c of q.codes) insRef.run(q.id, 'qa', c);
+        qaList.push(q);
         nQa++;
       }
       log(`${t.fid} ${doc.padEnd(6)} QA ${res.qas.length}`);
+    } else if (t.shisetsu) {
+      const st = buildShisetsu(text, t.kind);
+      for (const c of st.chunks) {
+        if (!c.path.length && t.kind === 'tsuchi') continue; // 別添の前（届出手続き等）は項目チャンクにしない
+        const key = `施:${kb.norm(baseName(c.title))}`;
+        insChunk.run(c.id, t.fid, t.tbl, 'shisetsu', key, JSON.stringify([key]), c.title || '', JSON.stringify(c.path), c.p_start, c.p_end, c.text, kb.norm(c.text));
+        insChunkFts.run(c.id, c.title || '', kb.norm(c.text));
+        insRef.run(c.id, 'chunk', key);
+        shisetsuTitles.push({ key, title: c.title, norm: kb.norm(baseName(c.title)) });
+        nChunks++;
+      }
+      log(`${t.fid} ${t.tbl}${t.kind === 'kokuji' ? '告示' : '通知'} 施設基準 items ${st.chunks.length} (sections ${st.sections.length})`);
     } else {
       const st = buildStructure(text);
       for (const c of st.chunks) {
@@ -93,7 +109,21 @@ function main() {
       log(`${t.fid} ${t.tbl}${t.kind === 'kokuji' ? '告示' : '通知'} chunks ${st.chunks.length}`);
     }
   }
+  // 疑義解釈の話題【…】と施設基準項目の題を突き合わせる（正規化した題が話題に含まれる／その逆、4文字以上）
+  const uniqTitles = new Map(); for (const s of shisetsuTitles) if (!uniqTitles.has(s.key)) uniqTitles.set(s.key, s);
+  let nLink = 0;
+  for (const q of qaList) {
+    if (!q.topic) continue;
+    const topics = q.topic.split(/[、,／]/).map(kb.norm).filter(x => x.length >= 4);
+    const linked = new Set();
+    for (const s of uniqTitles.values()) {
+      if (s.norm.length < 4) continue;
+      for (const tp of topics) if (tp.includes(s.norm) || s.norm.includes(tp)) linked.add(s.key);
+    }
+    for (const key of linked) { insRef.run(q.id, 'qa', key); nLink++; }
+  }
   db.exec('COMMIT');
+  log(`施設基準↔疑義解釈 リンク ${nLink} 件`);
   db.exec("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize'); INSERT INTO qa_fts(qa_fts) VALUES('optimize');");
   db.close();
   log(`done: docs ${nDocs}, chunks ${nChunks}, qa ${nQa} → ${dbPath}`);

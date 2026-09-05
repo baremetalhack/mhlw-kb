@@ -65,6 +65,7 @@ bin/structure.js    点数表の構造化（検証）  lib/diff.js       差分�
 bin/qa.js           疑義解釈の問／答       lib/fetch.js      HTTP（UA・リトライ・HEAD）
 bin/build-index.js  SQLite 索引構築        lib/mail.js       Gmail 通知
 bin/ask.js          お尋ね CLI             lib/structure.js  章/部/節/款・区分番号チャンク
+                                          lib/shisetsu.js   施設基準（告示=縦書き/通知）の項目チャンク
 config.json         対象ページ・分類規則    lib/qa.js         疑義解釈パーサ
 deploy/             systemd / launchd     lib/db.js         SQLite スキーマ・正規化
 data/               台帳・スナップショット・files（PDF）・text・qa・kb.sqlite
@@ -79,8 +80,14 @@ node bin/qa.js                     # 疑義解釈 → data/qa/<fid>.json（問�
 node bin/build-index.js            # data/kb.sqlite（SQLite FTS5 trigram、node:sqlite 組み込み・ネイティブ依存なし）
 node bin/ask.js B001-10            # 区分番号カード: 告示本文 + 通知（留意事項）+ 関連する疑義解釈（出典付き）
 node bin/ask.js 歯:M017            # 名前空間: 医 / 歯 / 調 / 訪（省略時 医）
+node bin/ask.js 施:機能強化加算        # 施設基準カード: 告示（基本/特掲）+ 通知 + 話題が一致する疑義解釈
 node bin/ask.js 在宅自己注射 導入初期  # 全文検索（全語 AND、3文字以上は trigram、短い語は後段フィルタ）
 ```
+
+- 施設基準の告示（基本診療料・特掲診療料）は官報形式の **縦書き** PDF。MuPDF は1文字ずつ返すので、
+  `bin/extract.js` が同じ x の文字を列にまとめ、右→左・上→下の順に再構成する（列の先頭 y を字下げ量として x に入れる）。
+  `lib/shisetsu.js` が「第三 …」「一の二 …」（漢数字、番号と題の間に空白なし）を項目に分ける。
+  「三一般病棟…」を「三一」と誤読しないよう、直前の番号から妥当な番号だけを採用する。
 
 - `bin/extract.js` だけが MuPDF（AGPL）に触れる。後段は JSON/SQLite しか読まないので、公開サーバーは MuPDF を含まない構成にできる。
 - 区分番号は点数表ごとの名前空間付きで扱う（`医:A000` と `歯:A000` は別物、調剤は `調:10-2`、訪問看護は `訪:06`）。
@@ -90,7 +97,7 @@ node bin/ask.js 在宅自己注射 導入初期  # 全文検索（全語 AND、3
 
 ## 今後
 
-1. 通知内の「注」「(1)」「ア」階層の復元（x 座標）、施設基準通知（基本診療料・特掲診療料）の項番チャンク化
+1. 通知内の「注」「(1)」「ア」階層の復元（x 座標）、施設基準の告示↔通知の項目対応の精度向上
 2. 訂正事務連絡（新旧対照表）を区分番号単位で紐付け、「いつ何が直ったか」の履歴を出す
 3. 埋め込みによる意味検索の併用、HTTP API / チャット UI（お尋ねサーバー）
 4. 令和10年度改定以降は `config.json` の `pages` にページを追加するだけで同じ台帳・索引に蓄積される

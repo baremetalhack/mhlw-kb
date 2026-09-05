@@ -33,6 +33,34 @@ const PAGE_NO_RE = /^[-－‐–—]\s*\d+\s*[-－‐–—]$/; // "- 21 -"
 
 function log(...a) { console.log(`[${new Date().toISOString()}]`, ...a); }
 
+// 縦書きページ（官報形式の施設基準告示など）: MuPDF は1文字ずつの「行」を返す。
+// 同じ x の文字を列にまとめ、列内は上→下、列は右→左の順に読む。
+// 出力行の x には「列の先頭文字の y（字下げ量に相当）」を入れ、y には列の x を入れる（v:true で区別）。
+function isVerticalPage(raw) {
+  const cells = raw.filter(l => l.text.trim().length === 1);
+  return raw.length >= 20 && cells.length / raw.length >= 0.6;
+}
+function verticalColumns(raw, pno) {
+  const items = raw.filter(l => !(/^\s*\d+\s*$/.test(l.text) && l.y > 780)); // 下端中央のページ番号を除く
+  const cols = []; // { cx, cells:[{y,text,h}] }
+  for (const l of items) {
+    const cx = l.x + l.w / 2;
+    let col = cols.find(c => Math.abs(c.cx - cx) <= 6);
+    if (!col) { col = { cx, cells: [] }; cols.push(col); }
+    col.cells.push({ y: l.y, text: l.text.trim(), h: l.h });
+  }
+  cols.sort((a, b) => b.cx - a.cx); // 右→左
+  const out = [];
+  for (const c of cols) {
+    c.cells.sort((a, b) => a.y - b.y);
+    const text = c.cells.map(k => k.text).join('');
+    if (!text.trim()) continue;
+    const top = c.cells[0].y, last = c.cells[c.cells.length - 1];
+    out.push({ p: pno, x: Math.round(top * 10) / 10, y: Math.round(c.cx * 10) / 10, w: Math.round((last.y + last.h - top) * 10) / 10, h: 14, size: null, text, v: true });
+  }
+  return out;
+}
+
 // MuPDF の構造化テキスト → 行配列（1ページ分）
 function pageLines(page, pno) {
   const j = JSON.parse(page.toStructuredText('preserve-whitespace').asJSON());
@@ -45,6 +73,7 @@ function pageLines(page, pno) {
       raw.push({ p: pno, x: l.bbox.x, y: l.bbox.y, w: l.bbox.w, h: l.bbox.h, size: l.font ? l.font.size : null, text });
     }
   }
+  if (isVerticalPage(raw)) return verticalColumns(raw, pno);
   // ルビ除去: 小サイズかつ、直後に同程度の x 範囲を持つ本文行が下にある
   const body = raw.filter(l => !(l.size != null && l.size <= RUBY_MAX_SIZE && l.h <= RUBY_MAX_SIZE + 1));
   // 同一ベースライン（y 差 ≤ 1.5pt）の断片を x 順に結合
